@@ -20,8 +20,35 @@ const (
 	oneMb    = 1024 * 1024
 )
 
+// This test is mainly for demo purpose (though we verify there are no errors), here is a scenario:
+// 1) We start a TCP server with QoS on random available port and start accepting client connections.
+// 	  When client connects, we serve a file download,
+//	  in our case we use scylla-monitoring-scylla-monitoring-3.7.0.tar.gz
+// 	  as a sample file. Throttling is set to 2 MB per sec.
+// 2) Then we run a single FileDownloadClient which starts consuming data given a bandwidth of 2 MB per sec.
+// 3) After 5 sec. we dynamically update global limit to 1 MB per sec. which decreases a bandwidth for already
+//    open connection.
+// 4) After another 5 sec. we start another FileDownloadClient which automatically changes throttling and decreases
+//	  bandwidth down to 0.5 MB per sec.
+// 5) After some time, 1st FileDownloadClient finishes download and bandwidth automatically
+//	  increases up to 1 MB per sec. This is because we have a global limit to 1 MB per sec. set previously.
+// 6) 2nd FileDownloadClient finishes download and the test ends on this.
 func TestFileDownloadThrottling(t *testing.T) {
 	assert := testifyAssert.New(t)
+
+	fmt.Println(`This test is mainly for demo purpose (though we verify there are no errors), here is a scenario:
+        1) We start a TCP server with QoS on random available port and start accepting client connections.
+  		   When client connects, we serve a file download,
+		   in our case we use scylla-monitoring-scylla-monitoring-3.7.0.tar.gz
+		   as a sample file. Throttling is set to 2 MB per sec.
+        2) Then we run a single FileDownloadClient which starts consuming data given a bandwidth of 2 MB per sec. 
+        3) After 5 sec. we dynamically update global limit to 1 MB per sec. which decreases a bandwidth for already
+           open connection.
+        4) After another 5 sec. we start another FileDownloadClient which automatically changes throttling and decreases 
+		   bandwidth down to 0.5 MB per sec.
+        5) After some time, 1st FileDownloadClient finishes download and bandwidth automatically 
+		   increases up to 1 MB per sec. This is because we have a global limit to 1 MB per sec. set previously.
+        6) 2nd FileDownloadClient finishes download and the test ends on this.`)
 
 	var wg sync.WaitGroup
 
@@ -52,7 +79,7 @@ func TestFileDownloadThrottling(t *testing.T) {
 
 func runFileServer() (net.Addr, io.Closer, error) {
 	fmt.Println("Server::Starting...")
-	// Listen for incoming connections.
+
 	listener, err := net.Listen(connType, serverAddr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Server::Error listening: %v", err)
@@ -63,7 +90,6 @@ func runFileServer() (net.Addr, io.Closer, error) {
 	qsListener.EnableThroughputLogging()
 	fmt.Println("Server::Set initial limitPerCon of 2 mb/sec.")
 
-	// Close the listener when the application closes.
 	fmt.Printf("Server::Listening on %s\n", listener.Addr().String())
 
 	go func() {
@@ -74,13 +100,13 @@ func runFileServer() (net.Addr, io.Closer, error) {
 
 	go func() {
 		for {
-			// Listen for an incoming connection.
 			conn, err := qsListener.Accept()
 			if err != nil {
 				fmt.Printf("Server::Warn about Accept() failure: %v\n", err)
 				return
 			}
 			fmt.Printf("Server::Accepted new connection from %s\n", conn.RemoteAddr().String())
+
 			// Handle connections in a new goroutine.
 			go serveFileDownload(conn)
 		}

@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// Connection wrapper which calculates and logs the throughput metric
 type loggingConn struct {
 	net.Conn
 	mu     sync.Mutex

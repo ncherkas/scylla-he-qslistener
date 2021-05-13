@@ -5,14 +5,15 @@ import (
 	"sync"
 )
 
+// net.Listener with Quality-of-Service support
 type QSListener struct {
 	net.Listener
 	mu               sync.Mutex
-	limitPerConn     int
-	limitGlobal      int
+	limitPerConn     int // Throughput limit per connection
+	limitGlobal      int // Global throughput limit across all listener connections
 	connLimitUpdateC map[string]chan int
 	connCloseC       chan string
-	logThroughput    bool
+	logThroughput    bool // Whether to log the throughput metrics
 }
 
 func New(l net.Listener) *QSListener {
@@ -22,6 +23,7 @@ func New(l net.Listener) *QSListener {
 }
 
 func (l *QSListener) handleConnCloseC() {
+	// Trigger limits recalculation on connection close
 	for addr := range l.connCloseC {
 		l.mu.Lock()
 		close(l.connLimitUpdateC[addr])
@@ -86,7 +88,7 @@ func (l *QSListener) Accept() (net.Conn, error) {
 	}
 	qsc := newQSConn(conn, l.limitPerConn, limitUpdateC, l.connCloseC)
 	l.connLimitUpdateC[conn.RemoteAddr().String()] = limitUpdateC
-	l.propagateLimitChange()
+	l.propagateLimitChange() // Trigger limits recalculation on new connection
 	return qsc, nil
 }
 
